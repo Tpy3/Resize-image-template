@@ -2,7 +2,6 @@ import argparse
 import os
 import shutil
 import sys
-import tempfile
 import zipfile
 
 from loguru import logger
@@ -26,7 +25,6 @@ def compress_image(
     original_file_size = os.path.getsize(image_file)
     target_file_size_bytes = target_file_size_kb * 1024
 
-    # 確保輸出目錄存在
     output_directory = os.path.dirname(output_filepath)
     if not os.path.exists(output_directory):
         try:
@@ -38,9 +36,8 @@ def compress_image(
 
     if original_file_size <= target_file_size_bytes:
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                image.save(temp_file.name, format=image_format)
-                shutil.move(temp_file.name, output_filepath)
+            image.save(output_filepath, format=image_format)
+            image.close()
         except Exception as e:
             logger.error(f"Error saving file: {output_filepath}: {e}")
             raise
@@ -50,9 +47,8 @@ def compress_image(
         quality = max(1, min(100, quality))
 
         try:
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                image.save(temp_file.name, format=image_format, quality=quality)
-                shutil.move(temp_file.name, output_filepath)
+            image.save(output_filepath, format=image_format)
+            image.close()
         except Exception as e:
             logger.error(f"Error saving file: {output_filepath}: {e}")
             raise
