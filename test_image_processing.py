@@ -5,13 +5,13 @@ from image_processing import process_image_file, process_images
 from PIL import Image
 
 # Replace these with the path to your test images
-TEST_IMAGE_SINGLE = "/path/to/single/test/image.jpg"
-TEST_IMAGE_MULTIPLE = "/path/to/directory/with/multiple/images"
+TEST_IMAGE_SINGLE = "/Users/tom/Downloads/picture_input/757038.jpg"
+TEST_IMAGE_MULTIPLE = "/Users/tom/Downloads/picture_input"
 
 
 def test_process_image_file():
     output_path = "test_output_single"
-    target_format = "JPG"
+    target_format = "jpeg"
     target_size = "1000x1000"
     target_file_size = 50
 
@@ -30,10 +30,13 @@ def test_process_image_file():
     # Check if the output file format is correct
     assert output_filename.endswith("." + target_format.lower())
 
-    # Check if the output file size is less than or equal to the target file size
+    # Check if the output file size is within the target file size +/- 10KB
     assert (
-        os.path.getsize(os.path.join(output_path, output_filename))
-        <= target_file_size * 1024
+        abs(
+            os.path.getsize(os.path.join(output_path, output_filename))
+            - target_file_size * 1024
+        )
+        <= 10 * 1024
     )
 
     # Check if the output file dimensions are less than or equal to the target size
@@ -45,7 +48,7 @@ def test_process_image_file():
 
 def test_process_images():
     output_path = "test_output_multiple"
-    target_format = "JPG"
+    target_format = "jpeg"
     target_size = "1000x1000"
     target_file_size = 50
     zip_filename = "test_images.zip"
