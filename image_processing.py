@@ -6,6 +6,7 @@ import zipfile
 
 from loguru import logger
 from PIL import Image
+from tqdm import tqdm
 
 logger.configure(
     handlers=[
@@ -17,6 +18,16 @@ logger.configure(
         }
     ]
 )
+
+
+def check_save_path(output_path):
+    if not os.path.exists(output_path):
+        try:
+            os.makedirs(output_path)
+            logger.info(f"Created directory: {output_path}")
+        except Exception as e:
+            logger.error(f"Error creating directory: {output_path}:{e}")
+            return False
 
 
 def compress_image(
@@ -34,38 +45,47 @@ def compress_image(
             logger.error(f"Error creating directory: {output_directory}: {e}")
             return
 
-    if original_file_size <= target_file_size_bytes:
-        try:
-            image.save(output_filepath, format=image_format)
-            image.close()
-        except Exception as e:
-            logger.error(f"Error saving file: {output_filepath}: {e}")
-            raise
-    else:
-        compression_ratio = target_file_size_bytes / original_file_size
-        quality = int(100 * compression_ratio)
-        quality = max(1, min(100, quality))
+    low = 1
+    high = 100
+
+    while low <= high:
+        quality = (low + high) // 2
 
         try:
-            image.save(output_filepath, format=image_format)
-            image.close()
+            image.save(output_filepath, format=image_format, quality=quality)
+            size = os.path.getsize(output_filepath)
+
+            if size < target_file_size_bytes:
+                low = quality + 1
+            else:
+                high = quality - 1
         except Exception as e:
             logger.error(f"Error saving file: {output_filepath}: {e}")
             raise
+
+    image.close()
 
 
 def process_image_file(
-    image_file, output_path, target_format, target_size, target_file_size
+    image_file, output_path, target_format, max_size, target_file_size
 ):
-
-    width, height = map(int, target_size.split("x"))
+    max_width, max_height = map(int, max_size.split("x"))
     target_format = target_format.upper()
 
     try:
         with Image.open(image_file) as img:
-
             img = img.convert("RGB")
-            img = img.resize((width, height), Image.ANTIALIAS)
+
+            # Keep the aspect ratio of image
+            width, height = img.size
+            if width > max_width or height > max_height:
+                ratio = min(max_width / width, max_height / height)
+                new_width = int(width * ratio)
+                new_height = int(height * ratio)
+            else:
+                new_width, new_height = width, height
+
+            img = img.resize((new_width, new_height), Image.ANTIALIAS)
 
             output_filename = (
                 os.path.splitext(os.path.basename(image_file))[0]
@@ -84,9 +104,13 @@ def process_image_file(
 
 
 def process_images(
-    input_path, output_path, target_format, target_size, target_file_size, zip_filename
+    input_path,
+    output_path,
+    target_format,
+    target_size,
+    target_file_size,
+    zip_filename=None,
 ):
-
     if not os.path.exists(input_path):
         raise FileNotFoundError("Input path does not exist.")
 
@@ -99,21 +123,36 @@ def process_images(
     ]
     processed_files = []
 
-    with zipfile.ZipFile(os.path.join(output_path, zip_filename), mode="w") as zip_file:
-        for image_file in image_files:
-            output_filename = process_image_file(
-                image_file, output_path, target_format, target_size, target_file_size
-            )
+    for image_file in tqdm(image_files, desc="Processing images"):
+        output_filename = process_image_file(
+            image_file, output_path, target_format, target_size, target_file_size
+        )
 
-            if output_filename:
-                processed_files.append(output_filename)
+        if output_filename:
+            processed_files.append(output_filename)
 
-                output_filepath = os.path.join(output_path, output_filename)
-                if os.path.exists(output_filepath):
-                    zip_file.write(output_filepath, arcname=output_filename)
-                    os.remove(output_filepath)
-                else:
-                    logger.error(f"File not found: {output_filepath}")
+    if zip_filename:
+        with zipfile.ZipFile(
+            os.path.join(output_path, zip_filename), mode="w"
+        ) as zip_file:
+            for image_file in image_files:
+                output_filename = process_image_file(
+                    image_file,
+                    output_path,
+                    target_format,
+                    target_size,
+                    target_file_size,
+                )
+
+                if output_filename:
+                    processed_files.append(output_filename)
+
+                    output_filepath = os.path.join(output_path, output_filename)
+                    if os.path.exists(output_filepath):
+                        zip_file.write(output_filepath, arcname=output_filename)
+                        os.remove(output_filepath)
+                    else:
+                        logger.error(f"File not found: {output_filepath}")
 
     return {
         "processed_files": processed_files,
@@ -121,7 +160,6 @@ def process_images(
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="Image Processing Script")
     parser.add_argument(
         "--mode",
@@ -131,7 +169,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--input_path", required=True, help="Path to the input images")
     parser.add_argument(
-        "--output_path", required=True, help="Path to the output images"
+        "--output_path", default="output", help="Path to the output images"
     )
     parser.add_argument(
         "--target_format", default="JPG", help="Target format for the images"
@@ -147,7 +185,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--zip_filename",
-        default="processed_images.zip",
+        default=False,
         help="Filename for the ZIP file containing processed images",
     )
 
@@ -159,7 +197,7 @@ if __name__ == "__main__":
     target_size = args.target_size
     target_file_size = args.target_file_size
     zip_filename = args.zip_filename
-
+    # check_save_path(output_path)
     if args.mode == "single":
         output_filename = process_image_file(
             input_path, output_path, target_format, target_size, target_file_size
